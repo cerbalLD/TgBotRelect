@@ -22,7 +22,7 @@ def start(message):
     cursor.execute("SELECT id, admin FROM user_token WHERE user_id_telegram=?", (user_id,))
     user_data = cursor.fetchone()
     conn.close()
-
+    user_data = False
     if user_data:
         id, admin = user_data
         main_menu(message, admin, id)
@@ -169,7 +169,7 @@ def list_token(message, page=1):
         for token in tokens_on_page:
             token_id = token[0]  # id записи
             token_value = token[1]  # токен
-            btn = telebot.types.InlineKeyboardButton(f"Token: {token_value}", callback_data=f"token_{token_id}")
+            btn = telebot.types.InlineKeyboardButton(f"{token_value}", callback_data=f"token_{token_id}")
             markup.add(btn)
 
         # Добавляем кнопки навигации
@@ -194,7 +194,7 @@ def handle_page_navigation(call):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('token_'))
 def handle_token_selection(call):
     selected_token_id = call.data.split('_')[1]  # Получаем id записи
-    print(selected_token_id)
+    
     # Подключаемся к базе данных
     conn, cursor = get_db_connection()
     
@@ -308,7 +308,7 @@ def process_file_input(message, user_passport):
     elif message.text:
         save_order_to_db(user_id, user_passport, message.text, None)
     else:
-        msg = bot.send_message(message.chat.id, "Пожолуйста отправьте текст, файл или аудио")
+        msg = bot.send_message(message.chat.id, "Пожалуйста отправьте текст, файл или аудио")
         bot.register_next_step_handler(msg, process_passport_input_loop, user_passport)
 
 # Функция для записи заказа в базу данных
@@ -444,6 +444,8 @@ def handle_order_selection(call):
 # Запускаем бота
 while True:
     try:
+        print("start")
         bot.polling(none_stop=True)
-    except:
+    except ValueError as e:
+        print(e)
         next
