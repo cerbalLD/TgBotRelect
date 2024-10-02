@@ -1,10 +1,43 @@
 import telebot
+from requests.exceptions import ReadTimeout, ConnectionError
 import sqlite3
 from openpyxl import load_workbook, Workbook
 import os
+import logging
+import sys
+import time
+
+# Инициализация логгера
+def setup_logging(log_file):
+    # Создаем объект логгера
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG)  # Устанавливаем базовый уровень логирования на DEBUG
+
+    # Создаем обработчик для записи в файл с указанием кодировки utf-8
+    file_handler = logging.FileHandler(log_file, encoding='utf-8')
+    file_handler.setLevel(logging.INFO)  # Устанавливаем уровень логирования INFO для файла
+
+    # Создаем обработчик для вывода в консоль с указанием кодировки utf-8
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)  # Устанавливаем уровень логирования INFO для консоли
+
+    # Создаем форматтер для сообщений
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+
+    # Устанавливаем форматтеры для обработчиков
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
+
+    # Добавляем обработчики к логгеру
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+    return logger
+logging = setup_logging('bot.txt')
 
 # Создаем экземпляр бота
-bot = telebot.TeleBot("7037338775:AAFwN_SkX-MWVzfqE0OBfwEX3BYEeMm24yA")
+TOKEN = "7037338775:AAFwN_SkX-MWVzfqE0OBfwEX3BYEeMm24yA"
+bot = telebot.TeleBot(TOKEN)
 
 # Функция для подключения к базе данных
 def get_db_connection():
@@ -15,6 +48,7 @@ def get_db_connection():
 # Обработка команды /start и проверка токена
 @bot.message_handler(commands=['start'])
 def start(message):
+    logging.info("[start] start mes")
     conn, cursor = get_db_connection()
     user_id = message.chat.id
 
@@ -33,32 +67,35 @@ def start(message):
 
 # Проверяем токен от пользователя
 def get_token(message):
+    logging.info("[get_token]")
     conn, cursor = get_db_connection()
-    
+    chat_id = message.chat.id
+
     # Ищем токен
-    cursor.execute("SELECT id, status, admin FROM user_token WHERE token=?", (message.text,))
+    cursor.execute("SELECT id, status, admin, user_id_telegram FROM user_token WHERE token=?", (message.text,))
     token_data = cursor.fetchone()
     conn.close()
     
     if token_data:
-        id, status, admin = token_data
-        if status:
+        id, status, admin, user_id_telegram = token_data
+        if status and user_id_telegram != chat_id:
             # Если токена уже активирован
-            bot.send_message(message.chat.id, "Токена уже занят!")
+            bot.send_message(chat_id, "Токена уже занят!")
             # Просим ввести токен
-            msg = bot.send_message(message.chat.id, "Введите ваш токен:")
+            msg = bot.send_message(chat_id, "Введите ваш токен:")
             bot.register_next_step_handler(msg, get_token)
         else:
             main_menu(message, admin, id)
     else:
         # Если токена не существует
-        bot.send_message(message.chat.id, "Такго токена не существует!")
+        bot.send_message(chat_id, "Такго токена не существует!")
         # Просим ввести токен
-        msg = bot.send_message(message.chat.id, "Введите ваш токен:")
+        msg = bot.send_message(chat_id, "Введите ваш токен:")
         bot.register_next_step_handler(msg, get_token)
 
 # Главное меню
 def main_menu(message, admin, id):
+    logging.info(f"[main_menu] Проверка токена: admin - {admin}, id - {id}")
     user_id = message.chat.id
 
     if admin:
@@ -82,8 +119,9 @@ def main_menu(message, admin, id):
 
 # Панель администратора
 def admin_panel(message):
+    logging.info("[admin_panel]")
     # Выводим кнопки "Новый токен" и "Список токенов"
-    markup = telebot.types.ReplyKeyboardMarkup(row_width=2, resize_keyboard=True)
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn_new_token = telebot.types.KeyboardButton('Новый токен')
     btn_token_list = telebot.types.KeyboardButton('Список токенов')
     markup.add(btn_new_token, btn_token_list)
@@ -93,6 +131,7 @@ def admin_panel(message):
 # Обработка нажатия кнопки "Новый токен"
 @bot.message_handler(func=lambda message: message.text == 'Новый токен')
 def new_token(message):
+    logging.info("[new_token]")
     conn, cursor = get_db_connection()
     user_id = message.chat.id
 
@@ -111,6 +150,7 @@ def new_token(message):
 
 # Обработка введенной информации (описания токена)
 def process_token_description(message):
+    logging.info("[process_token_description]")
     token_description = message.text  # Описание токена, введенное пользователем
     msg = bot.send_message(message.chat.id, "Теперь напишите сам токен:")
     bot.register_next_step_handler(msg, process_token_input, token_description)
@@ -118,6 +158,8 @@ def process_token_description(message):
 # Обработка токена и запись данных в базу
 def process_token_input(message, token_description):
     token_value = message.text  # Сам токен, введенный пользователем
+    chat_id = message.chat.id
+    logging.info(f"[process_token_input] Сохранение токена: token - {token_value}, Описание - {token_description}")
 
     # Добавляем данные в базу данных
     conn, cursor = get_db_connection()
@@ -128,15 +170,17 @@ def process_token_input(message, token_description):
             (token_value, False, False, token_description, None))
         conn.commit()
         conn.close()
-        bot.send_message(message.chat.id, f"Создан токен: ```{token_value}``` \n Для {token_description}")
+
+        bot.send_message(chat_id, f"Создан токен: ```{token_value}```Описание: {token_description}", parse_mode='Markdown')
     except sqlite3.IntegrityError:
-        bot.send_message(message.chat.id, "Токен с таким названием уже существует!")
+        bot.send_message(chat_id, "Токен с таким названием уже существует!")
         process_token_input(message, token_description)
 
 
 # Обработка нажатия кнопки "Список токенов"
 @bot.message_handler(func=lambda message: message.text == 'Список токенов')
 def list_token(message, page=1):
+    logging.info(f"[list_token] Ввод страницы: {page}")
     conn, cursor = get_db_connection()
     user_id = message.chat.id
 
@@ -188,11 +232,13 @@ def list_token(message, page=1):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('prev_page_') or call.data.startswith('next_page_'))
 def handle_page_navigation(call):
     page = int(call.data.split('_')[-1])
+    logging.info(f"[handle_page_navigation] Переход на страницу: {page}")
     list_token(call.message, page=page)
 
 # Обработчик для выбора токена (при нажатии на кнопку с id записи)
 @bot.callback_query_handler(func=lambda call: call.data.startswith('token_'))
 def handle_token_selection(call):
+    logging.info("[handle_token_selection] Открываем данные токена")
     selected_token_id = call.data.split('_')[1]  # Получаем id записи
     
     # Подключаемся к базе данных
@@ -227,6 +273,7 @@ def handle_token_selection(call):
 # Обработчик для удаления токена по id записи
 @bot.callback_query_handler(func=lambda call: call.data.startswith('delete_'))
 def handle_token_delete(call):
+    logging.info("[handle_token_delete] Удаляем токен")
     selected_token_id = call.data.split('_')[1]  # Получаем id записи, который нужно удалить
     
     # Подключаемся к базе данных
@@ -244,8 +291,9 @@ def handle_token_delete(call):
 
 # user panel
 def user_panel(message):
+    logging.info("[user_panel]")
     # Выводим кнопки "Создать заказ" и "Посмотреть заказы"
-    markup = telebot.types.ReplyKeyboardMarkup(row_width=2)
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
     btn_create_order = telebot.types.KeyboardButton('Создать заказ')
     btn_view_orders = telebot.types.KeyboardButton('Посмотреть заказы')
     markup.add(btn_create_order, btn_view_orders)
@@ -255,6 +303,7 @@ def user_panel(message):
 # Обработка нажатия кнопки "Создать заказ"
 @bot.message_handler(func=lambda message: message.text == 'Создать заказ')
 def new_order(message):
+    logging.info("[new_order] Начало нового заказа")
     conn, cursor = get_db_connection()
     user_id = message.chat.id
 
@@ -275,56 +324,97 @@ def new_order(message):
 # Обработчик для получения паспорта объекта
 def process_passport_input(message):
     user_passport = message.text  # Сохраняем паспорт объекта
+    logging.info(f"[process_passport_input] Сохраняем паспорт: {user_passport}")
 
     # Запрашиваем текст или аудио файл
     msg = bot.send_message(message.chat.id, "Напишите данные заказа, отправьте файл или аудио:")
     bot.register_next_step_handler(msg, process_file_input, user_passport)
 
-# Обработчик для получения паспорта объекта loop
+# Обработчик для получения текста заказа loop
 def process_passport_input_loop(message, user_passport):
+    logging.info("[process_passport_input_loop] Ждем текст заказа")
     # Запрашиваем текст или аудио файл
     msg = bot.send_message(message.chat.id, "Напишите данные заказа, отправьте файл или аудио:")
     bot.register_next_step_handler(msg, process_file_input, user_passport)
 
-# Обработчик для получения файла (текст или аудио)
-def process_file_input(message, user_passport):
+# Обработчик для начала ввода заказа
+def process_file_input(message, user_passport, user_data={'text': "",'files': []}):
+    logging.info(f"[process_file_input] Получаем текст заказа и работаем по кругу до исключения: {user_data}")
     user_id = message.chat.id
-    # Проверяем, что было отправлено пользователем: текст или файл
-    if message.content_type == 'document':
-        # Если это текстовый файл
-        file_info = bot.get_file(message.document.file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        file_text = downloaded_file.decode('utf-8')  # Предполагаем, что файл — это текст
 
-        # Записываем заказ в базу данных
-        save_order_to_db(user_id, user_passport, file_text, None)
-    elif message.content_type == 'audio':
-        # Если это аудио файл
-        file_info = bot.get_file(message.audio.file_id)
-        downloaded_file = bot.download_file(file_info.file_path)
-        
-        # Записываем аудио файл в бинарном виде в базу данных
-        save_order_to_db(user_id, user_passport, None, downloaded_file)
-    elif message.text:
-        save_order_to_db(user_id, user_passport, message.text, None)
+    if message.text == 'Закончить':
+        finish_input(message, user_passport, user_data)
     else:
-        msg = bot.send_message(message.chat.id, "Пожалуйста отправьте текст, файл или аудио")
-        bot.register_next_step_handler(msg, process_passport_input_loop, user_passport)
+        # Проверяем, что было отправлено пользователем
+        if message.content_type == 'text':
+            user_data['text'] += message.text + "\n"
+        elif message.content_type == 'document':
+            file_info = bot.get_file(message.document.file_id)
+            file_link = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+            user_data['files'].append(file_link)
+        elif message.content_type == 'audio':
+            file_info = bot.get_file(message.audio.file_id)
+            file_link = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+            user_data['files'].append(file_link)
+        elif message.content_type == 'photo':
+            file_info = bot.get_file(message.photo[-1].file_id)  # Берем последнее фото в списке (наивысшее качество)
+            file_link = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+            user_data['files'].append(file_link)
+
+        # Отправляем сообщение с кнопкой "Закончить"
+        markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
+        markup.add("Закончить")
+        msg = bot.send_message(user_id, "Сообщение получено. Нажмите 'Закончить', когда завершите ввод.", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_file_input, user_passport, user_data)
+
+# Обработчик для завершения ввода и сохранения данных
+def finish_input(message, user_passport, user_data):
+    logging.info(f"[finish_input] Обработка исключения: паспорт - {user_passport}, данные заказа - {user_data}")
+    user_id = message.chat.id
+    
+    # Получаем данные пользователя
+    text_content = user_data['text']
+    file_links = ", ".join(user_data['files']) if user_data['files'] else "Нет файлов"
+
+    # Записываем заказ в базу данных
+    save_order_to_db(user_id, text_content, file_links, user_passport)
+
+    # Формируем сообщение с данными заказа для пользователя
+    order_summary = f"""
+Ваш заказ был успешно сохранен.
+    
+Паспорт объекта: {user_passport}
+Текст заказа:\n{text_content if text_content else "Текст отсутствует"}Ссылки на файлы:\n{file_links}
+    """
+    
+    # Отправляем пользователю сообщение с данными заказа
+    bot.send_message(user_id, order_summary)
+    
+    # Очищаем временные данные пользователя
+    del user_data
+
+    user_panel(message)
 
 # Функция для записи заказа в базу данных
-def save_order_to_db(user_id, passport, text_content, file_content):
+def save_order_to_db(user_id, text_content, file_content, user_passport):
+    logging.info("[save_order_to_db] Сохраняем в бд заказ")
     conn, cursor = get_db_connection()
-    
+
     # Добавляем новый заказ в таблицу orders
     cursor.execute("""
-        INSERT INTO orders (pass, text, file, status, user_id_telegram)
+        INSERT INTO orders (user_id_telegram, text, file, status, pass)
         VALUES (?, ?, ?, ?, ?)
-    """, (passport, text_content, file_content, 'Ожидание', user_id))
+    """, (user_id, text_content, file_content, 'Ожидание', user_passport))
 
     conn.commit()
     conn.close()
 
-    # Сохранение в exel
+    # Сохранение данных в Excel файл
+    save_order_to_excel(text_content, file_content, user_passport)
+
+# Функция для сохранения данных в Excel файл
+def save_order_to_excel(text_content, file_content, user_passport):
+    logging.info("[save_order_to_excel] Сохраняем в эксель заказ")
     file_name = 'orders.xlsx'
 
     # Проверяем, существует ли файл Excel
@@ -336,23 +426,19 @@ def save_order_to_db(user_id, passport, text_content, file_content):
         # Создаем новый Excel файл и добавляем заголовки
         workbook = Workbook()
         sheet = workbook.active
-        sheet.append(["Паспорт обьекта", "Заказ", "Аудио", "Статус"])
-
-    # Преобразуем бинарные данные файла для Excel
-    file_display = "Файл прикреплен" if file_content else "Нет файла"
+        sheet.append(["Паспорт обьекта", "Текст заказа", "Файлы", "Статус"])
 
     # Добавляем новую строку данных
-    sheet.append([passport, text_content, file_display, "Ожидание"])
+    sheet.append([user_passport, text_content, file_content, "Ожидание"])
 
     # Сохраняем изменения в файл
     workbook.save(file_name)
-
-    bot.send_message(user_id, f"Заказ создан\nПаспорт обьекта: {passport}\nТекст заказа: {text_content}\nАудио\\Файл: {file_content}")
 
 
 # Обработка нажатия кнопки "Посмотреть заказы"
 @bot.message_handler(func=lambda message: message.text == 'Посмотреть заказы')
 def list_user_order(message, page=1):
+    logging.info("[list_user_order] Выводим список заказов")
     conn, cursor = get_db_connection()
     user_id = message.chat.id
 
@@ -412,12 +498,14 @@ def list_user_order(message, page=1):
 def handle_orders_pagination(call):
     # Получаем номер страницы
     page = int(call.data.split('_')[2])
+    logging.info(f"[handle_orders_pagination] переход на страницу: {page}")
     list_user_order(call.message, page)
 
 # Обработчик для выбора заказа (при нажатии на кнопку с заказом)
 @bot.callback_query_handler(func=lambda call: call.data.startswith('order_'))
 def handle_order_selection(call):
     order_id = call.data.split('_')[1]  # Получаем ID заказа
+    logging.info(f"[handle_orders_pagination] Выводим данные заказа: id - {order_id}")
     
     # Подключаемся к базе данных
     conn, cursor = get_db_connection()
@@ -432,8 +520,8 @@ def handle_order_selection(call):
         
         # Формируем и отправляем сообщение с информацией о заказе
         order_info = (f"Паспорт объекта: {pass_info}\n"
-                      f"Текст: {text_content or 'Текст не добавлен'}\n"
-                      f"Файл: {file or 'Файл не добавлен'}\n"
+                      f"Текст:\n{text_content or 'Текст не добавлен'}"
+                      f"Файлы:\n{file or 'Файл не добавлен'}\n"
                       f"Статус: {status}")
         bot.send_message(call.message.chat.id, order_info)
     else:
@@ -444,8 +532,14 @@ def handle_order_selection(call):
 # Запускаем бота
 while True:
     try:
-        print("start")
+        logging.info("[start_bot] Starting bot polling")
         bot.polling(none_stop=True)
-    except ValueError as e:
-        print(e)
-        next
+    except ReadTimeout:
+        logging.warning("ReadTimeout error occurred. Retrying in 5 seconds...")
+        time.sleep(5)
+    except ConnectionError:
+        logging.warning("ConnectionError occurred. Retrying in 5 seconds...")
+        time.sleep(5)
+    except Exception as e:
+        logging.warning(f"An unexpected error occurred: {e}. Retrying in 5 seconds...")
+        time.sleep(5)
