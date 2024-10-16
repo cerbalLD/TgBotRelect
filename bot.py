@@ -1,12 +1,12 @@
-import telebot
+from oauth2client.service_account import ServiceAccountCredentials
 from requests.exceptions import ReadTimeout, ConnectionError
+import gspread
 import sqlite3
+import telebot
 import logging
-import sys
 import time
 import json
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
+import sys
 
 # Инициализация логгера
 def setup_logging(log_file):
@@ -615,7 +615,7 @@ def handle_order_deletion(call):
 while True:
     try:
         logging.info("[start_bot] Starting bot polling")
-        bot.polling(none_stop=True, timeout=60, long_polling_timeout=60)
+        bot.polling(none_stop=True)
     except ReadTimeout:
         logging.warning("ReadTimeout error occurred. Retrying in 5 seconds...")
         time.sleep(5)
