@@ -1,12 +1,12 @@
 import telebot
 from requests.exceptions import ReadTimeout, ConnectionError
 import sqlite3
-from openpyxl import load_workbook, Workbook
-import openpyxl
-import os
 import logging
 import sys
 import time
+import json
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
 # Инициализация логгера
 def setup_logging(log_file):
@@ -34,15 +34,25 @@ def setup_logging(log_file):
     logger.addHandler(console_handler)
 
     return logger
-logging = setup_logging('bot.txt')
+logging = setup_logging('log.txt')
+
+# Чтение конфигурационного файла
+with open('config.json', 'r') as file_1:
+    config = json.load(file_1)
+
+
+TOKEN = config['TOKEN']
+CLIENT_MAIL = config['CLIENT_MAIL']
+SHEET_ID = config['SHEET_ID']
+SHEET_JSON_PATH = config["SHEET_JSON_PATH"]
+DB_NAME = config["DB_NAME"]
 
 # Создаем экземпляр бота
-TOKEN = "7037338775:AAFwN_SkX-MWVzfqE0OBfwEX3BYEeMm24yA"
 bot = telebot.TeleBot(TOKEN)
 
 # Функция для подключения к базе данных
 def get_db_connection():
-    conn = sqlite3.connect('tokens.db')
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     return conn, cursor
 
@@ -321,57 +331,43 @@ def new_order(message):
         # Спрашиваем у пользователя паспорт объекта
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add("Назад")
-        msg = bot.send_message(message.chat.id, "Введите паспорт объекта:", reply_markup=markup)
-        bot.register_next_step_handler(msg, process_passport_input)
-
-# Обработчик для получения паспорта объекта
-def process_passport_input(message):
-    user_passport = message.text  # Сохраняем паспорт объекта
-    logging.info(f"[process_passport_input] Сохраняем паспорт: {user_passport}")
-
-    # Переходим к запросу подсистемы
-    msg = bot.send_message(message.chat.id, "Введите подсистему объекта:")
-    bot.register_next_step_handler(msg, process_subsystem_input, user_passport)
+        msg = bot.send_message(message.chat.id, "Введите подсистему объекта:")
+        bot.register_next_step_handler(msg, process_subsystem_input)
 
 # Обработчик для получения подсистемы
-def process_subsystem_input(message, user_passport):
-    if message.text == "Назад":
-        # Возвращаем пользователя к предыдущему шагу (ввод паспорта)
-        msg = bot.send_message(message.chat.id, "Введите паспорт объекта:")
-        bot.register_next_step_handler(msg, process_passport_input)
-    else:
-        user_subsystem = message.text  # Сохраняем подсистему
-        logging.info(f"[process_subsystem_input] Сохраняем подсистему: {user_subsystem}")
+def process_subsystem_input(message):
+    user_subsystem = message.text  # Сохраняем подсистему
+    logging.info(f"[process_subsystem_input] Сохраняем подсистему: {user_subsystem}")
 
-        # Переходим к запросу адреса
-        msg = bot.send_message(message.chat.id, "Введите адрес объекта:")
-        bot.register_next_step_handler(msg, process_address_input, user_passport, user_subsystem)
+    # Переходим к запросу адреса
+    msg = bot.send_message(message.chat.id, "Введите адрес объекта:")
+    bot.register_next_step_handler(msg, process_address_input, user_subsystem)
 
 # Обработчик для получения адреса объекта
-def process_address_input(message, user_passport, user_subsystem):
+def process_address_input(message, user_subsystem):
     if message.text == "Назад":
         # Возвращаем пользователя к предыдущему шагу (ввод подсистемы)
         msg = bot.send_message(message.chat.id, "Введите подсистему объекта:")
-        bot.register_next_step_handler(msg, process_subsystem_input, user_passport)
+        bot.register_next_step_handler(msg, process_subsystem_input)
     else:
         user_address = message.text  # Сохраняем адрес
         logging.info(f"[process_address_input] Сохраняем адрес: {user_address}")
 
         # Переходим к запросу текста или файла заказа
         msg = bot.send_message(message.chat.id, "Напишите данные заказа, отправьте файл или аудио:")
-        bot.register_next_step_handler(msg, process_file_input, user_passport, user_subsystem, user_address)
+        bot.register_next_step_handler(msg, process_file_input, user_subsystem, user_address)
 
 # Обработчик для получения текста заказа с сохранением всех данных
-def process_file_input(message, user_passport, user_subsystem, user_address, user_data={'text': "", 'files': []}):
+def process_file_input(message, user_subsystem, user_address, user_data={'text': "", 'files': []}):
     logging.info(f"[process_file_input] Получаем текст заказа и работаем по кругу до исключения: {user_data}")
     user_id = message.chat.id
 
     if message.text == 'Назад':
         # Возвращаем пользователя к предыдущему шагу (ввод адреса)
         msg = bot.send_message(user_id, "Введите адрес объекта:")
-        bot.register_next_step_handler(msg, process_address_input, user_passport, user_subsystem)
+        bot.register_next_step_handler(msg, process_address_input, user_subsystem)
     elif message.text == 'Закончить':
-        finish_input(message, user_passport, user_subsystem, user_address, user_data)
+        finish_input(message, user_subsystem, user_address, user_data)
     else:
         # Проверяем, что было отправлено пользователем
         if message.content_type == 'text':
@@ -412,11 +408,11 @@ def process_file_input(message, user_passport, user_subsystem, user_address, use
         markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
         markup.add("Закончить", "Назад")
         msg = bot.send_message(user_id, "Сообщение получено.\nНажмите 'Закончить', когда завершите ввод", reply_markup=markup)
-        bot.register_next_step_handler(msg, process_file_input, user_passport, user_subsystem, user_address, user_data)
+        bot.register_next_step_handler(msg, process_file_input, user_subsystem, user_address, user_data)
 
 # Обработчик для завершения ввода и сохранения данных
-def finish_input(message, user_passport, user_subsystem, user_address, user_data):
-    logging.info(f"[finish_input] Обработка исключения: паспорт - {user_passport}, подсистема - {user_subsystem}, адрес - {user_address}, данные заказа - {user_data}")
+def finish_input(message, user_subsystem, user_address, user_data):
+    logging.info(f"[finish_input] Обработка исключения: подсистема - {user_subsystem}, адрес - {user_address}, данные заказа - {user_data}")
     user_id = message.chat.id
     
     # Получаем данные пользователя
@@ -424,13 +420,12 @@ def finish_input(message, user_passport, user_subsystem, user_address, user_data
     file_links = ", ".join(user_data['files']) if user_data['files'] else "Нет файлов"
 
     # Записываем заказ в базу данных и получаем номер заказа
-    order_number = save_order_to_db(user_id, text_content, file_links, user_passport, user_subsystem, user_address)
+    order_number = save_order_to_db(user_id, text_content, file_links, user_subsystem, user_address)
 
     # Формируем сообщение с данными заказа для пользователя
     order_summary = f"""
 Ваш заказ №{order_number} был успешно сохранен.
     
-Паспорт объекта: {user_passport}
 Подсистема: {user_subsystem}
 Адрес: {user_address}
 Текст заказа:\n{text_content if text_content else "Текст отсутствует"}Ссылки на файлы:\n{file_links if file_links else "Файлы отсутствуют"}
@@ -445,7 +440,7 @@ def finish_input(message, user_passport, user_subsystem, user_address, user_data
     user_panel(message)
 
 # Функция для записи заказа в базу данных
-def save_order_to_db(user_id, text_content, file_content, user_passport, user_subsystem, user_address):
+def save_order_to_db(user_id, text_content, file_content, user_subsystem, user_address):
     logging.info("[save_order_to_db] Сохраняем в бд заказ")
     conn, cursor = get_db_connection()
 
@@ -456,40 +451,37 @@ def save_order_to_db(user_id, text_content, file_content, user_passport, user_su
 
     # Добавляем новый заказ в таблицу orders с автоинкрементом номера
     cursor.execute("""
-        INSERT INTO orders (user_id_telegram, text, file, status, pass, subsystem, address, number)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (user_id, text_content, file_content, 'Ожидание', user_passport, user_subsystem, user_address, next_number))
+        INSERT INTO orders (user_id_telegram, text, file, status, subsystem, address, number)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, text_content, file_content, 'Ожидание', user_subsystem, user_address, next_number))
 
     conn.commit()
     conn.close()
 
     # Сохранение данных в Excel файл
-    save_order_to_excel(text_content, file_content, user_passport, user_subsystem, user_address, next_number)
+    save_order_to_google_sheets(text_content, file_content, user_subsystem, user_address, next_number)
 
     return next_number  # Возвращаем номер заказа для отображения
 
-# Функция для сохранения данных в Excel файл
-def save_order_to_excel(text_content, file_content, user_passport, user_subsystem, user_address, next_number):
-    logging.info("[save_order_to_excel] Сохраняем данные в Excel")
+# Функция для записи данных в Google Sheets
+def save_order_to_google_sheets(text_content, file_content, user_subsystem, user_address, next_number):
+    logging.info("[save_order_to_google_sheets] Сохраняем данные в Google Sheets")
+
+    # Настраиваем доступ через OAuth2
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_name(SHEET_JSON_PATH, scope)
     
-    # Проверяем, существует ли файл Excel
-    if os.path.exists("orders.xlsx"):
-        # Загружаем существующий файл
-        workbook = load_workbook("orders.xlsx")
-        sheet = workbook.active
-    else:
-        # Создаем новый Excel файл и добавляем заголовки
-        workbook = Workbook()
-        sheet = workbook.active
-        sheet.append(["Номер заказа", "Паспорт обьекта", "Адрес", "Подсистема", "Текст заказа", "Файлы", "Статус"])
+    # Открываем доступ к таблице
+    client = gspread.authorize(creds)
+    
+    # Открываем таблицу по названию или ID
+    sheet = client.open_by_key(SHEET_ID).sheet1
 
-    # Добавляем новую строку с данными
-    new_row = [next_number, user_passport, user_address, user_subsystem, text_content, file_content, "Ожидание"]
-    sheet.append(new_row)
+    # Добавляем данные в новую строку
+    new_row = [next_number, user_address, user_subsystem, text_content, file_content, "Ожидание"]
+    sheet.append_row(new_row)
 
-    # Сохраняем изменения в файл
-    workbook.save('orders.xlsx')
-    logging.info("Заказ успешно сохранен в Excel файл.")
+    logging.info("Заказ успешно сохранен в Google Таблицу.")
 
 
 # Обработка нажатия кнопки "Посмотреть заказы"
@@ -567,7 +559,7 @@ def handle_order_selection(call):
 
     # Получаем информацию о заказе из базы данных
     conn, cursor = get_db_connection()
-    cursor.execute("SELECT number, pass, address, subsystem, text, file FROM orders WHERE id = ?", (order_id,))
+    cursor.execute("SELECT number, address, subsystem, text, file FROM orders WHERE id = ?", (order_id,))
     order = cursor.fetchone()
     conn.close()
 
@@ -575,12 +567,11 @@ def handle_order_selection(call):
         bot.send_message(call.message.chat.id, "Заказ не найден.")
         return
 
-    number, pass_info, address, subsystem, order_text, order_file = order
+    number, address, subsystem, order_text, order_file = order
 
     # Формируем сообщение с деталями заказа
     order_details = f"""
 Заказ №{number}
-Паспорт: {pass_info}
 Адрес: {address}
 Подсистема: {subsystem}
 Текст заказа:
@@ -624,7 +615,7 @@ def handle_order_deletion(call):
 while True:
     try:
         logging.info("[start_bot] Starting bot polling")
-        bot.polling(none_stop=True)
+        bot.polling(none_stop=True, timeout=60, long_polling_timeout=60)
     except ReadTimeout:
         logging.warning("ReadTimeout error occurred. Retrying in 5 seconds...")
         time.sleep(5)

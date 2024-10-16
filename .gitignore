@@ -5,3 +5,4 @@ tokens.db
 *.xlsx
 задачи
 bot.txt
+/.venv
