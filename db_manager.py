@@ -12,15 +12,21 @@ def create():
                         status BOOLEAN NOT NULL,
                         admin BOOLEAN NOT NULL,
                         name TEXT,
-                        user_id_telegram INTEGER)''')
+                        user_id_telegram INTEGER
+                   )''')
     
     cursor.execute('''CREATE TABLE IF NOT EXISTS orders (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        pass TEXT,
-                        text TEXT,
-                        file BLOB,
-                        status TEXT NOT NULL,
-                        user_id_telegram INTEGER)''')
+                        number INTEGER,  -- Поле для номера заказа
+                        pass TEXT,       -- Паспорт объекта
+                        subsystem TEXT,  -- Подсистема объекта
+                        address TEXT,    -- Адрес объекта
+                        text TEXT,       -- Текстовый заказ
+                        file BLOB,       -- Файлы, связанные с заказом
+                        status TEXT NOT NULL, -- Статус заказа
+                        user_id_telegram INTEGER -- ID пользователя в Telegram
+                   )''')
+
     conn.commit()
 
 # Вставка нового токена
@@ -63,9 +69,32 @@ def delete_order(order_id):
     cursor.execute("DELETE FROM orders WHERE id=?", (order_id,))
     conn.commit()
 
+# Функция для обновления таблицы orders, добавляя новые поля
+def update_orders_table():
+    try:
+        # Добавляем поле number
+        cursor.execute("ALTER TABLE orders ADD COLUMN number INTEGER")
+    except sqlite3.OperationalError:
+        print("Поле 'number' уже существует.")
+    
+    try:
+        # Добавляем поле subsystem
+        cursor.execute("ALTER TABLE orders ADD COLUMN subsystem TEXT")
+    except sqlite3.OperationalError:
+        print("Поле 'subsystem' уже существует.")
+    
+    try:
+        # Добавляем поле address
+        cursor.execute("ALTER TABLE orders ADD COLUMN address TEXT")
+    except sqlite3.OperationalError:
+        print("Поле 'address' уже существует.")
+    
+    # Применяем изменения
+    conn.commit()
+
 # Основной цикл программы с вводом данных
 while True:
-    a = input("0-exit\n1-create tables\n2-insert_user_token\n3-insert_orders\n4-show_user_token\n5-show_orders\n6-delete_user_token\n7-delete_order\n")
+    a = input("0-exit\n1-create tables\n2-insert_user_token\n3-insert_orders\n4-show_user_token\n5-show_orders\n6-delete_user_token\n7-delete_order\n8-update_orders_table\n")
     
     if a == "0":
         break
@@ -119,6 +148,11 @@ while True:
         delete_order(order_id)
         print(f"Заказ с ID {order_id} удален.")
     
+    elif a == "8":
+        # Обновление таблицы orders
+        update_orders_table()
+        print("Таблица orders обновлена.")
+
     else:
         print("Неверная команда, попробуйте снова.")
 

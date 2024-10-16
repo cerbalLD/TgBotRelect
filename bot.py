@@ -2,6 +2,7 @@ import telebot
 from requests.exceptions import ReadTimeout, ConnectionError
 import sqlite3
 from openpyxl import load_workbook, Workbook
+import openpyxl
 import os
 import logging
 import sys
@@ -262,7 +263,7 @@ def handle_token_selection(call):
         
         # Создаем инлайн-кнопку "Удалить"
         markup = telebot.types.InlineKeyboardMarkup()
-        btn_delete = telebot.types.InlineKeyboardButton("Удалить", callback_data=f'delete_{selected_token_id}')
+        btn_delete = telebot.types.InlineKeyboardButton("Удалить", callback_data=f'delete_token_{selected_token_id}')
         markup.add(btn_delete)
 
         # Отправляем сообщение с информацией о токене и кнопкой
@@ -271,7 +272,7 @@ def handle_token_selection(call):
         bot.send_message(call.message.chat.id, "Информация о токене не найдена.")
 
 # Обработчик для удаления токена по id записи
-@bot.callback_query_handler(func=lambda call: call.data.startswith('delete_'))
+@bot.callback_query_handler(func=lambda call: call.data.startswith('delete_token_'))
 def handle_token_delete(call):
     logging.info("[handle_token_delete] Удаляем токен")
     selected_token_id = call.data.split('_')[1]  # Получаем id записи, который нужно удалить
@@ -318,7 +319,9 @@ def new_order(message):
         start(message)
     else:
         # Спрашиваем у пользователя паспорт объекта
-        msg = bot.send_message(message.chat.id, "Введите паспорт объекта:")
+        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("Назад")
+        msg = bot.send_message(message.chat.id, "Введите паспорт объекта:", reply_markup=markup)
         bot.register_next_step_handler(msg, process_passport_input)
 
 # Обработчик для получения паспорта объекта
@@ -326,65 +329,111 @@ def process_passport_input(message):
     user_passport = message.text  # Сохраняем паспорт объекта
     logging.info(f"[process_passport_input] Сохраняем паспорт: {user_passport}")
 
-    # Запрашиваем текст или аудио файл
-    msg = bot.send_message(message.chat.id, "Напишите данные заказа, отправьте файл или аудио:")
-    bot.register_next_step_handler(msg, process_file_input, user_passport)
+    # Переходим к запросу подсистемы
+    msg = bot.send_message(message.chat.id, "Введите подсистему объекта:")
+    bot.register_next_step_handler(msg, process_subsystem_input, user_passport)
 
-# Обработчик для получения текста заказа loop
-def process_passport_input_loop(message, user_passport):
-    logging.info("[process_passport_input_loop] Ждем текст заказа")
-    # Запрашиваем текст или аудио файл
-    msg = bot.send_message(message.chat.id, "Напишите данные заказа, отправьте файл или аудио:")
-    bot.register_next_step_handler(msg, process_file_input, user_passport)
+# Обработчик для получения подсистемы
+def process_subsystem_input(message, user_passport):
+    if message.text == "Назад":
+        # Возвращаем пользователя к предыдущему шагу (ввод паспорта)
+        msg = bot.send_message(message.chat.id, "Введите паспорт объекта:")
+        bot.register_next_step_handler(msg, process_passport_input)
+    else:
+        user_subsystem = message.text  # Сохраняем подсистему
+        logging.info(f"[process_subsystem_input] Сохраняем подсистему: {user_subsystem}")
 
-# Обработчик для начала ввода заказа
-def process_file_input(message, user_passport, user_data={'text': "",'files': []}):
+        # Переходим к запросу адреса
+        msg = bot.send_message(message.chat.id, "Введите адрес объекта:")
+        bot.register_next_step_handler(msg, process_address_input, user_passport, user_subsystem)
+
+# Обработчик для получения адреса объекта
+def process_address_input(message, user_passport, user_subsystem):
+    if message.text == "Назад":
+        # Возвращаем пользователя к предыдущему шагу (ввод подсистемы)
+        msg = bot.send_message(message.chat.id, "Введите подсистему объекта:")
+        bot.register_next_step_handler(msg, process_subsystem_input, user_passport)
+    else:
+        user_address = message.text  # Сохраняем адрес
+        logging.info(f"[process_address_input] Сохраняем адрес: {user_address}")
+
+        # Переходим к запросу текста или файла заказа
+        msg = bot.send_message(message.chat.id, "Напишите данные заказа, отправьте файл или аудио:")
+        bot.register_next_step_handler(msg, process_file_input, user_passport, user_subsystem, user_address)
+
+# Обработчик для получения текста заказа с сохранением всех данных
+def process_file_input(message, user_passport, user_subsystem, user_address, user_data={'text': "", 'files': []}):
     logging.info(f"[process_file_input] Получаем текст заказа и работаем по кругу до исключения: {user_data}")
     user_id = message.chat.id
 
-    if message.text == 'Закончить':
-        finish_input(message, user_passport, user_data)
+    if message.text == 'Назад':
+        # Возвращаем пользователя к предыдущему шагу (ввод адреса)
+        msg = bot.send_message(user_id, "Введите адрес объекта:")
+        bot.register_next_step_handler(msg, process_address_input, user_passport, user_subsystem)
+    elif message.text == 'Закончить':
+        finish_input(message, user_passport, user_subsystem, user_address, user_data)
     else:
         # Проверяем, что было отправлено пользователем
         if message.content_type == 'text':
             user_data['text'] += message.text + "\n"
+
         elif message.content_type == 'document':
             file_info = bot.get_file(message.document.file_id)
             file_link = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
             user_data['files'].append(file_link)
+
         elif message.content_type == 'audio':
             file_info = bot.get_file(message.audio.file_id)
             file_link = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
             user_data['files'].append(file_link)
+
         elif message.content_type == 'photo':
             file_info = bot.get_file(message.photo[-1].file_id)  # Берем последнее фото в списке (наивысшее качество)
             file_link = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
             user_data['files'].append(file_link)
 
-        # Отправляем сообщение с кнопкой "Закончить"
-        markup = telebot.types.ReplyKeyboardMarkup(one_time_keyboard=True)
-        markup.add("Закончить")
-        msg = bot.send_message(user_id, "Сообщение получено. Нажмите 'Закончить', когда завершите ввод.", reply_markup=markup)
-        bot.register_next_step_handler(msg, process_file_input, user_passport, user_data)
+        elif message.content_type == 'video':
+            file_info = bot.get_file(message.video.file_id)
+            file_link = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+            user_data['files'].append(file_link)
+
+        elif message.content_type == 'voice':
+            file_info = bot.get_file(message.voice.file_id)
+            file_link = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+            user_data['files'].append(file_link)
+
+        elif message.content_type == 'video_note':
+            file_info = bot.get_file(message.video_note.file_id)
+            file_link = f"https://api.telegram.org/file/bot{TOKEN}/{file_info.file_path}"
+            user_data['files'].append(file_link)
+
+
+        # Отправляем сообщение с кнопками "Закончить" и "Назад"
+        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+        markup.add("Закончить", "Назад")
+        msg = bot.send_message(user_id, "Сообщение получено.\nНажмите 'Закончить', когда завершите ввод", reply_markup=markup)
+        bot.register_next_step_handler(msg, process_file_input, user_passport, user_subsystem, user_address, user_data)
 
 # Обработчик для завершения ввода и сохранения данных
-def finish_input(message, user_passport, user_data):
-    logging.info(f"[finish_input] Обработка исключения: паспорт - {user_passport}, данные заказа - {user_data}")
+def finish_input(message, user_passport, user_subsystem, user_address, user_data):
+    logging.info(f"[finish_input] Обработка исключения: паспорт - {user_passport}, подсистема - {user_subsystem}, адрес - {user_address}, данные заказа - {user_data}")
     user_id = message.chat.id
     
     # Получаем данные пользователя
     text_content = user_data['text']
     file_links = ", ".join(user_data['files']) if user_data['files'] else "Нет файлов"
 
-    # Записываем заказ в базу данных
-    save_order_to_db(user_id, text_content, file_links, user_passport)
+    # Записываем заказ в базу данных и получаем номер заказа
+    order_number = save_order_to_db(user_id, text_content, file_links, user_passport, user_subsystem, user_address)
 
     # Формируем сообщение с данными заказа для пользователя
     order_summary = f"""
-Ваш заказ был успешно сохранен.
+Ваш заказ №{order_number} был успешно сохранен.
     
 Паспорт объекта: {user_passport}
-Текст заказа:\n{text_content if text_content else "Текст отсутствует"}Ссылки на файлы:\n{file_links}
+Подсистема: {user_subsystem}
+Адрес: {user_address}
+Текст заказа:\n{text_content if text_content else "Текст отсутствует"}Ссылки на файлы:\n{file_links if file_links else "Файлы отсутствуют"}
     """
     
     # Отправляем пользователю сообщение с данными заказа
@@ -396,43 +445,51 @@ def finish_input(message, user_passport, user_data):
     user_panel(message)
 
 # Функция для записи заказа в базу данных
-def save_order_to_db(user_id, text_content, file_content, user_passport):
+def save_order_to_db(user_id, text_content, file_content, user_passport, user_subsystem, user_address):
     logging.info("[save_order_to_db] Сохраняем в бд заказ")
     conn, cursor = get_db_connection()
 
-    # Добавляем новый заказ в таблицу orders
+    # Получаем текущий максимальный номер заказа, чтобы определить следующий
+    cursor.execute("SELECT MAX(number) FROM orders")
+    max_number = cursor.fetchone()[0]
+    next_number = 1 if max_number is None else max_number + 1
+
+    # Добавляем новый заказ в таблицу orders с автоинкрементом номера
     cursor.execute("""
-        INSERT INTO orders (user_id_telegram, text, file, status, pass)
-        VALUES (?, ?, ?, ?, ?)
-    """, (user_id, text_content, file_content, 'Ожидание', user_passport))
+        INSERT INTO orders (user_id_telegram, text, file, status, pass, subsystem, address, number)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (user_id, text_content, file_content, 'Ожидание', user_passport, user_subsystem, user_address, next_number))
 
     conn.commit()
     conn.close()
 
     # Сохранение данных в Excel файл
-    save_order_to_excel(text_content, file_content, user_passport)
+    save_order_to_excel(text_content, file_content, user_passport, user_subsystem, user_address, next_number)
+
+    return next_number  # Возвращаем номер заказа для отображения
 
 # Функция для сохранения данных в Excel файл
-def save_order_to_excel(text_content, file_content, user_passport):
-    logging.info("[save_order_to_excel] Сохраняем в эксель заказ")
-    file_name = 'orders.xlsx'
-
+def save_order_to_excel(text_content, file_content, user_passport, user_subsystem, user_address, next_number):
+    logging.info("[save_order_to_excel] Сохраняем данные в Excel")
+    
     # Проверяем, существует ли файл Excel
-    if os.path.exists(file_name):
+    if os.path.exists("orders.xlsx"):
         # Загружаем существующий файл
-        workbook = load_workbook(file_name)
+        workbook = load_workbook("orders.xlsx")
         sheet = workbook.active
     else:
         # Создаем новый Excel файл и добавляем заголовки
         workbook = Workbook()
         sheet = workbook.active
-        sheet.append(["Паспорт обьекта", "Текст заказа", "Файлы", "Статус"])
+        sheet.append(["Номер заказа", "Паспорт обьекта", "Адрес", "Подсистема", "Текст заказа", "Файлы", "Статус"])
 
-    # Добавляем новую строку данных
-    sheet.append([user_passport, text_content, file_content, "Ожидание"])
+    # Добавляем новую строку с данными
+    new_row = [next_number, user_passport, user_address, user_subsystem, text_content, file_content, "Ожидание"]
+    sheet.append(new_row)
 
     # Сохраняем изменения в файл
-    workbook.save(file_name)
+    workbook.save('orders.xlsx')
+    logging.info("Заказ успешно сохранен в Excel файл.")
 
 
 # Обработка нажатия кнопки "Посмотреть заказы"
@@ -453,7 +510,7 @@ def list_user_order(message, page=1):
         start(message)
     else:
         # Извлекаем заказы пользователя из базы данных
-        cursor.execute("SELECT id, pass FROM orders WHERE user_id_telegram = ?", (user_id,))
+        cursor.execute("SELECT id, number, address, subsystem FROM orders WHERE user_id_telegram = ?", (user_id,))
         orders = cursor.fetchall()
         conn.close()
 
@@ -471,9 +528,9 @@ def list_user_order(message, page=1):
         # Создаем инлайн-кнопки для заказов
         markup = telebot.types.InlineKeyboardMarkup()
         for order in paginated_orders:
-            order_id, pass_info = order
+            order_id, number, address, subsystem = order
             btn_order = telebot.types.InlineKeyboardButton(
-                text=f"Заказ #{order_id} - {pass_info}",
+                text=f"Номер: {number} - Адрес: {address} - Подсистема: {subsystem}",
                 callback_data=f'order_{order_id}'
             )
             markup.add(btn_order)
@@ -491,7 +548,8 @@ def list_user_order(message, page=1):
             markup.add(*navigation_buttons)
 
         # Отправляем сообщение с кнопками
-        bot.send_message(message.chat.id, f"Страниц {page}\\{end}\nВаши заказы:", reply_markup=markup)
+        end_page = orders_per_page / len(orders)
+        bot.send_message(message.chat.id, f"Страниц {page}\\{end_page}\nВаши заказы:", reply_markup=markup)
 
 # Обработчик навигации по страницам заказов
 @bot.callback_query_handler(func=lambda call: call.data.startswith('orders_page_'))
@@ -504,28 +562,61 @@ def handle_orders_pagination(call):
 # Обработчик для выбора заказа (при нажатии на кнопку с заказом)
 @bot.callback_query_handler(func=lambda call: call.data.startswith('order_'))
 def handle_order_selection(call):
-    order_id = call.data.split('_')[1]  # Получаем ID заказа
-    logging.info(f"[handle_orders_pagination] Выводим данные заказа: id - {order_id}")
-    
-    # Подключаемся к базе данных
+    order_id = int(call.data.split('_')[1])
+    logging.info(f"[handle_order_selection] выбран заказ №{order_id}")
+
+    # Получаем информацию о заказе из базы данных
     conn, cursor = get_db_connection()
-    
-    # Извлекаем информацию о заказе
-    cursor.execute("SELECT pass, text, file, status FROM orders WHERE id = ?", (order_id,))
-    order_data = cursor.fetchone()
+    cursor.execute("SELECT number, pass, address, subsystem, text, file FROM orders WHERE id = ?", (order_id,))
+    order = cursor.fetchone()
     conn.close()
 
-    if order_data:
-        pass_info, text_content, file, status = order_data
-        
-        # Формируем и отправляем сообщение с информацией о заказе
-        order_info = (f"Паспорт объекта: {pass_info}\n"
-                      f"Текст:\n{text_content or 'Текст не добавлен'}"
-                      f"Файлы:\n{file or 'Файл не добавлен'}\n"
-                      f"Статус: {status}")
-        bot.send_message(call.message.chat.id, order_info)
-    else:
-        bot.send_message(call.message.chat.id, "Информация о заказе не найдена.")
+    if not order:
+        bot.send_message(call.message.chat.id, "Заказ не найден.")
+        return
+
+    number, pass_info, address, subsystem, order_text, order_file = order
+
+    # Формируем сообщение с деталями заказа
+    order_details = f"""
+Заказ №{number}
+Паспорт: {pass_info}
+Адрес: {address}
+Подсистема: {subsystem}
+Текст заказа:
+{order_text if order_text else 'Текст отсутствует'}
+Файлы:
+{order_file if order_file else 'Файлы отсутствуют'}
+    """
+
+    # Создаем инлайн-кнопку для удаления заказа
+    markup = telebot.types.InlineKeyboardMarkup()
+    btn_delete = telebot.types.InlineKeyboardButton(
+        text=f"Удалить заказ №{number}",
+        callback_data=f'delete_order_{number}'
+    )
+    markup.add(btn_delete)
+
+    # Отправляем сообщение с деталями заказа и кнопкой удаления
+    bot.send_message(call.message.chat.id, order_details, reply_markup=markup)
+
+# Обработчик для удаления заказа
+@bot.callback_query_handler(func=lambda call: call.data.startswith('delete_order_'))
+def handle_order_deletion(call):
+    number = int(call.data.split('_')[2])
+    logging.info(f"[handle_order_deletion] Удаляем заказ №{number}")
+
+    # Удаляем заказ из базы данных
+    conn, cursor = get_db_connection()
+    cursor.execute("DELETE FROM orders WHERE number = ?", (number,))
+    conn.commit()
+    conn.close()
+
+    # Уведомляем пользователя
+    bot.send_message(call.message.chat.id, f"Заказ №{number} был удален.")
+
+    # Обновляем список заказов
+    list_user_order(call.message)
 
 
 
