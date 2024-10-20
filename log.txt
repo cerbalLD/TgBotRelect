@@ -1,2 +1,24 @@
 2024-10-16 19:47:05,260 - INFO - [start_bot] Starting bot polling
 2024-10-16 19:50:25,132 - INFO - [start_bot] Starting bot polling
+2024-10-20 14:45:26,698 - INFO - [start_bot] Starting bot polling
+2024-10-20 14:46:52,687 - INFO - [list_user_order] Выводим список заказов
+2024-10-20 14:50:00,888 - WARNING - ReadTimeout error occurred. Retrying in 5 seconds...
+2024-10-20 14:50:06,363 - INFO - [start_bot] Starting bot polling
+2024-10-20 14:50:07,996 - INFO - [list_user_order] Выводим список заказов
+2024-10-20 14:50:13,996 - INFO - [start_bot] Starting bot polling
+2024-10-20 14:50:16,997 - INFO - [start_bot] Starting bot polling
+2024-10-20 14:50:22,554 - INFO - [start_bot] Starting bot polling
+2024-10-20 14:50:23,516 - INFO - [list_user_order] Выводим список заказов
+2024-10-20 14:50:28,281 - INFO - [handle_orders_pagination] переход на страницу: 2
+2024-10-20 14:50:28,281 - INFO - [list_user_order] Выводим список заказов
+2024-10-20 14:50:34,171 - INFO - [handle_orders_pagination] переход на страницу: 3
+2024-10-20 14:50:34,171 - INFO - [list_user_order] Выводим список заказов
+2024-10-20 14:50:38,674 - INFO - [handle_orders_pagination] переход на страницу: 4
+2024-10-20 14:50:38,674 - INFO - [list_user_order] Выводим список заказов
+2024-10-20 14:50:43,568 - INFO - [handle_orders_pagination] переход на страницу: 3
+2024-10-20 14:50:43,568 - INFO - [list_user_order] Выводим список заказов
+2024-10-20 14:50:45,209 - INFO - [handle_orders_pagination] переход на страницу: 2
+2024-10-20 14:50:45,209 - INFO - [list_user_order] Выводим список заказов
+2024-10-20 14:50:46,892 - INFO - [handle_orders_pagination] переход на страницу: 1
+2024-10-20 14:50:46,892 - INFO - [list_user_order] Выводим список заказов
+2024-10-20 14:50:50,562 - INFO - [handle_order_selection] выбран заказ №29

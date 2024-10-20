@@ -6,6 +6,7 @@ import telebot
 import logging
 import time
 import json
+import math
 import sys
 
 # Инициализация логгера
@@ -195,7 +196,7 @@ def list_token(message, page=1):
     conn, cursor = get_db_connection()
     user_id = message.chat.id
 
-    # Проверяем, привязан ли какой то токен к человеку
+    # Проверяем, привязан ли какой-то токен к человеку
     cursor.execute("SELECT id, admin FROM user_token WHERE user_id_telegram=?", (user_id,))
     user_data = cursor.fetchone()
 
@@ -212,7 +213,9 @@ def list_token(message, page=1):
 
         # Определяем количество токенов на одной странице
         tokens_per_page = 10
-        total_pages = (len(tokens) - 1) // tokens_per_page + 1
+
+        # Округляем количество страниц
+        total_pages = math.ceil(len(tokens) / tokens_per_page)
 
         # Получаем токены для текущей страницы
         start_idx = (page - 1) * tokens_per_page
@@ -539,9 +542,11 @@ def list_user_order(message, page=1):
         if navigation_buttons:
             markup.add(*navigation_buttons)
 
+        # Округляем количество страниц
+        total_pages = math.ceil(len(orders) / orders_per_page)
+
         # Отправляем сообщение с кнопками
-        end_page = orders_per_page / len(orders)
-        bot.send_message(message.chat.id, f"Страниц {page}\\{end_page}\nВаши заказы:", reply_markup=markup)
+        bot.send_message(message.chat.id, f"Страниц {page}/{total_pages}\nВаши заказы:", reply_markup=markup)
 
 # Обработчик навигации по страницам заказов
 @bot.callback_query_handler(func=lambda call: call.data.startswith('orders_page_'))
