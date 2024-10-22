@@ -68,7 +68,6 @@ def start(message):
     cursor.execute("SELECT id, admin FROM user_token WHERE user_id_telegram=?", (user_id,))
     user_data = cursor.fetchone()
     conn.close()
-    user_data = False
     if user_data:
         id, admin = user_data
         main_menu(message, admin, id)
@@ -147,7 +146,7 @@ def new_token(message):
     conn, cursor = get_db_connection()
     user_id = message.chat.id
 
-    # Проверяем, привязан ли какой то токен к человеку
+    # Проверяем, привязан ли какой-то токен к человеку
     cursor.execute("SELECT id, admin FROM user_token WHERE user_id_telegram=?", (user_id,))
     user_data = cursor.fetchone()
     conn.close()
@@ -164,14 +163,28 @@ def new_token(message):
 def process_token_description(message):
     logging.info("[process_token_description]")
     token_description = message.text  # Описание токена, введенное пользователем
-    msg = bot.send_message(message.chat.id, "Теперь напишите сам токен:")
-    bot.register_next_step_handler(msg, process_token_input, token_description)
+    msg = bot.send_message(message.chat.id, "Теперь напишите, админ это или нет (в ответе напишите Да или Нет):")
+    bot.register_next_step_handler(msg, validate_admin_input, token_description)
+
+# Проверка корректности введенного значения (Да или Нет)
+def validate_admin_input(message, token_description):
+    token_admin_input = message.text.strip().lower()  # Приводим ввод к нижнему регистру для проверки
+
+    if token_admin_input in ['да', 'нет']:
+        # Преобразуем "Да" в True, "Нет" в False
+        token_admin = True if token_admin_input == 'да' else False
+        msg = bot.send_message(message.chat.id, "Введите название токена токен:")
+        bot.register_next_step_handler(msg, process_token_input, token_description, token_admin)
+    else:
+        # Если ввод некорректный, повторно спрашиваем
+        msg = bot.send_message(message.chat.id, "Пожалуйста, ответьте 'Да' или 'Нет'.")
+        bot.register_next_step_handler(msg, validate_admin_input, token_description)
 
 # Обработка токена и запись данных в базу
-def process_token_input(message, token_description):
-    token_value = message.text  # Сам токен, введенный пользователем
+def process_token_input(message, token_description, token_admin):
+    token_value = message.text.strip()  # Сам токен, введенный пользователем
     chat_id = message.chat.id
-    logging.info(f"[process_token_input] Сохранение токена: token - {token_value}, Описание - {token_description}")
+    logging.info(f"[process_token_input] Сохранение токена: token - {token_value}, Описание - {token_description}, Admin - {token_admin}")
 
     # Добавляем данные в базу данных
     conn, cursor = get_db_connection()
@@ -179,14 +192,17 @@ def process_token_input(message, token_description):
         cursor.execute("""
             INSERT INTO user_token (token, status, admin, name, user_id_telegram)
             VALUES (?, ?, ?, ?, ?)""",
-            (token_value, False, False, token_description, None))
+            (token_value, False, token_admin, token_description, None))
         conn.commit()
         conn.close()
 
-        bot.send_message(chat_id, f"Создан токен: ```{token_value}```Описание: {token_description}", parse_mode='Markdown')
+        bot.send_message(chat_id, f"Создан токен: ```{token_value}```\nОписание: {token_description}\nАдмин: {'Да' if token_admin else 'Нет'}", parse_mode='Markdown')
     except sqlite3.IntegrityError:
-        bot.send_message(chat_id, "Токен с таким названием уже существует!")
-        process_token_input(message, token_description)
+        bot.send_message(chat_id, "Токен с таким значением уже существует! Пожалуйста, введите другой токен.")
+        # Повторно запрашиваем только токен
+        msg = bot.send_message(chat_id, "Введите другой токен:")
+        bot.register_next_step_handler(msg, process_token_input, token_description, token_admin)
+
 
 
 # Обработка нажатия кнопки "Список токенов"

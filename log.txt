@@ -22,3 +22,25 @@
 2024-10-20 14:50:46,892 - INFO - [handle_orders_pagination] переход на страницу: 1
 2024-10-20 14:50:46,892 - INFO - [list_user_order] Выводим список заказов
 2024-10-20 14:50:50,562 - INFO - [handle_order_selection] выбран заказ №29
+2024-10-22 17:01:42,844 - INFO - [start_bot] Starting bot polling
+2024-10-22 17:01:55,728 - INFO - [start] start mes
+2024-10-22 17:02:02,638 - INFO - [get_token]
+2024-10-22 17:02:02,640 - INFO - [main_menu] Проверка токена: admin - 1, id - 1
+2024-10-22 17:02:02,721 - INFO - [admin_panel]
+2024-10-22 17:02:05,348 - INFO - [new_token]
+2024-10-22 17:02:22,509 - INFO - [process_token_description]
+2024-10-22 17:02:27,298 - INFO - [process_token_input] Сохранение токена: token - user, Описание - токен разработчика для проверки пользователя
+2024-10-22 17:10:35,282 - INFO - [start_bot] Starting bot polling
+2024-10-22 17:10:58,633 - INFO - [start_bot] Starting bot polling
+2024-10-22 17:11:00,573 - INFO - [new_token]
+2024-10-22 17:11:17,252 - INFO - [process_token_description]
+2024-10-22 17:11:22,114 - INFO - [process_token_description]
+2024-10-22 17:14:53,981 - INFO - [start_bot] Starting bot polling
+2024-10-22 17:14:57,939 - INFO - [new_token]
+2024-10-22 17:15:07,308 - INFO - [process_token_description]
+2024-10-22 17:15:07,583 - WARNING - An unexpected error occurred: name 'process_token_admin' is not defined. Retrying in 5 seconds...
+2024-10-22 17:15:12,583 - INFO - [start_bot] Starting bot polling
+2024-10-22 17:16:38,930 - INFO - [start_bot] Starting bot polling
+2024-10-22 17:16:39,400 - INFO - [new_token]
+2024-10-22 17:16:44,838 - INFO - [process_token_description]
+2024-10-22 17:16:50,849 - INFO - [process_token_input] Сохранение токена: token - user, Описание - токен разработчика для проверки пользователя, Admin - False
