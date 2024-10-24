@@ -1,9 +1,5 @@
-db_manager.py
-orders.xlsx
-tokens.db
-*.db
-*.xlsx
-задачи
-bot.txt
+
 /.venv
+relectbot-e0abd2962d11.json
+задачи
 log.txt
