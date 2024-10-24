@@ -413,3 +413,4 @@ Traceback (most recent call last):
 telebot.apihelper.ApiTelegramException: A request to the Telegram API was unsuccessful. Error code: 409. Description: Conflict: terminated by other getUpdates request; make sure that only one bot instance is running
 
 2024-10-24 17:32:22,206 - WARNING - ConnectionError occurred. Retrying in 5 seconds...
+2024-10-24 17:41:12,181 - INFO - [start_bot] Starting bot polling

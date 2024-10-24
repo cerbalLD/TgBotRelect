@@ -373,6 +373,7 @@ def process_address_input(message, user_subsystem):
         logging.info(f"[process_address_input] Сохраняем адрес: {user_address}")
 
         # Переходим к запросу текста или файла заказа
+        user_data={'text': "", 'files': []}
         msg = bot.send_message(message.chat.id, "Напишите данные заказа, отправьте файл или аудио:")
         bot.register_next_step_handler(msg, process_file_input, user_subsystem, user_address)
 
@@ -383,6 +384,7 @@ def process_file_input(message, user_subsystem, user_address, user_data={'text':
 
     if message.text == 'Назад':
         # Возвращаем пользователя к предыдущему шагу (ввод адреса)
+        user_data={'text': "", 'files': []}
         msg = bot.send_message(user_id, "Введите адрес объекта:")
         bot.register_next_step_handler(msg, process_address_input, user_subsystem)
     elif message.text == 'Закончить':
