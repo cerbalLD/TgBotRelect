@@ -2,11 +2,11 @@
 
 TOKEN - токен бота в телеграм
 
-CLIENT_MAIL - почта бота
+CLIENT_MAIL - почта бота google
 
-SHEET_ID - id ключь таблицы
+SHEET_ID - id  таблицы "https://docs.google.com/spreadsheets/d/здесь будет id таблицы/edit?pli=1&gid=0#gid=0"
 
-SHEET_JSON_PATH - путь к файлу авторизации почты бота
+SHEET_JSON_PATH - путь к файлу авторизации почты бота google
 
 Добавляем почту бота редакторы вашей таблицы (google sheet) и назваем таблицу "orders"
 
